@@ -1,9 +1,18 @@
+/* I built this map generator for a 2D tile-based game similar to the game Brogue.
+This map generator takes in random seed number and generates a unique explorable world.
+After experimenting with a few pathfinding algorithms and the Random Walk algorithm,I wasn't able to come up with a solution.
+Then I decided to use a basic and simple logic:  start with a room at a random location on the grid, randomly choose a side
+of the room (left, right, up, down) and extend a hallway from that room, then generate a random size the room from that hallway,
+and repeat the process. Since it's a 2D grid, I had to make sure there is no overlapping.
+This part can be improved to save time and space.  
+From line 82 - 396: code for map generator
+*/
+
 package byog.Core;
 
 import byog.TileEngine.TERenderer;
 import byog.TileEngine.TETile;
 import byog.TileEngine.Tileset;
-
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Random;
@@ -45,6 +54,7 @@ public class MapGenerator implements Serializable {
         addRoom(firstRoom);
         rooms.push(firstRoom);
 
+        // extend rooms from the first room
         while (rooms.size() > 0) {
             firstRoom = rooms.peek();
             if (!firstRoom.haveExit()) {
@@ -53,12 +63,12 @@ public class MapGenerator implements Serializable {
             extendRoom(firstRoom);
         }
 
+        // game play components
         addLockedDoor(firstRoom);
         player = addPlayer();
         for (int i = 0; i < 10 - level; i++) {
             addPotions();
         }
-
         addRat();
 
         for (int i = 0; i < 10 + level; i++) {
@@ -68,120 +78,133 @@ public class MapGenerator implements Serializable {
         return world;
     }
 
-
-    public static Place liftCurse() {
-        return curse;
-    }
-
-    public Place addPlayer() {
-        int x = random.nextInt(WIDTH);
-        int y = random.nextInt(HEIGHT);
-        while (!world[x][y].equals(EXIT_TILE)) {
-            x = random.nextInt(WIDTH);
-            y = random.nextInt(HEIGHT);
-        }
-        world[x][y] = Tileset.PLAYER;
-        return new Place(x, y);
-    }
-
-    private Place addStairs() {
-        int x = random.nextInt(WIDTH);
-        int y = random.nextInt(HEIGHT);
+    // initialize the 2D grid
+    private void initialize() {
+        world = new TETile[WIDTH][HEIGHT];
+        ter.initialize(WIDTH, HEIGHT);
         for (int i = 0; i < WIDTH; i++) {
             for (int j = 0; j < HEIGHT; j++) {
-                if(world[x][y] != Tileset.FLOOR
-                        || world[x][y] == Tileset.POTION
-                        || world[x][y] == Tileset.RAT
-                        || world[x][y] == Tileset.PLAYER) {
-                    x = random.nextInt(WIDTH);
-                    y = random.nextInt(HEIGHT);
-                }
+                world[i][j] = Tileset.NOTHING;
             }
         }
-        world[x][y] = Tileset.STAIR;
-        return new Place(x,y);
     }
 
-    private void addLockedDoor(Room room) {
-        ArrayList<Place> doorSpots = new ArrayList<>();
-        for (int i = 0; i < room.leftWall().size(); i++) {
-            Place p = room.leftWall().get(i);
-            if (p.x - 1 >= 0) {
-                if (world[p.x][p.y].description().equals("wall")
-                        && (!world[p.x][p.y + 1].description().equals("floor")
-                        || !world[p.x][p.y - 1].description().equals("floor"))
-                        && world[p.x - 1][p.y].description().equals("nothing")) {
-                    doorSpots.add(p);
-                }
-            }
+    // create the first room
+    private Room generateRoom() {
+        int h = random.nextInt(MAXH) + 2;
+        int w = random.nextInt(MAXW) + 2;
+        //Random starting place startx, starty with room for walls;
+        int startX = random.nextInt(WIDTH - 6) + 3;
+        int startY = random.nextInt(HEIGHT - 6) + 3;
+        while (startX + w + 1 >= WIDTH - 3) {
+            startX = random.nextInt(WIDTH - 6) + 3;
         }
-        for (int i = 0; i < room.rightWall().size(); i++) {
-            Place p = room.rightWall().get(i);
-            if (p.x + 1 < WIDTH) {
-                if (world[p.x][p.y].description().equals("wall")
-                        && (!world[p.x][p.y + 1].description().equals("floor")
-                        || !world[p.x][p.y - 1].description().equals("floor"))
-                        && world[p.x + 1][p.y].description().equals("nothing")) {
-                    doorSpots.add(p);
-                }
-            }
+        while (startY + h + 1 >= HEIGHT - 3) {
+            startY = random.nextInt(HEIGHT - 6) + 3;
         }
-        for (int i = 0; i < room.topWall().size(); i++) {
-            Place p = room.topWall().get(i);
-            if (p.y + 1 < HEIGHT) {
-                if (world[p.x][p.y].description().equals("wall")
-                        && (!world[p.x + 1][p.y].description().equals("floor")
-                        || !world[p.x - 1][p.y].description().equals("floor"))
-                        && world[p.x][p.y + 1].description().equals("nothing")) {
-                    doorSpots.add(p);
-                }
-            }
-        }
-
-        for (int i = 0; i < room.bottomWall().size(); i++) {
-            Place p = room.bottomWall().get(i);
-            if (p.y - 1 >= 0) {
-                if (world[p.x][p.y].description().equals("wall")
-                        && (!world[p.x + 1][p.y].description().equals("floor")
-                        || !world[p.x - 1][p.y].description().equals("floor"))
-                        && world[p.x][p.y - 1].description().equals("nothing")) {
-                    doorSpots.add(p);
-                }
-            }
-        }
-        if (!doorSpots.isEmpty()) {
-            int door = random.nextInt(doorSpots.size());
-            Place exit = doorSpots.get(door);
-            world[exit.x][exit.y] = ENTRY_TILE;
-            if (world[exit.x + 1][exit.y].equals(Tileset.FLOOR)) {
-                world[exit.x + 1][exit.y] = Tileset.CURSE;
-                curse = new Place(exit.x + 1, exit.y);
-            } else if (world[exit.x - 1][exit.y].equals(Tileset.FLOOR)) {
-                world[exit.x - 1][exit.y] = Tileset.CURSE;
-                curse = new Place(exit.x - 1, exit.y);
-            } else if (world[exit.x][exit.y + 1].equals(Tileset.FLOOR)) {
-                world[exit.x][exit.y + 1] = Tileset.CURSE;
-                curse = new Place(exit.x, exit.y + 1);
-            } else if (world[exit.x][exit.y - 1].equals(Tileset.FLOOR)) {
-                world[exit.x][exit.y - 1] = Tileset.CURSE;
-                curse = new Place(exit.x, exit.y - 1);
-            }
-
-        } else {
-            int x = random.nextInt(WIDTH);
-            int y = random.nextInt(HEIGHT);
-            for (int i = 0; i < WIDTH - 1; i++) {
-                for (int j = 0; j < HEIGHT - 1; j++) {
-                    if(world[x][y] != Tileset.WALL) {
-                        x = random.nextInt(WIDTH);
-                        y = random.nextInt(HEIGHT);
-                    }
-                }
-            }
-            world[x][y] = Tileset.LOCKED_DOOR;
-        }
+        return new Room(w, h, new Place(startX, startY));
 
     }
+
+    //extend hall from a room, return an exit point (still space for another room) or null (hit the wall);
+    private Enter extendHall(Room r1) {
+        r1.avoidWalls();
+        while (r1.haveExit()) {
+            //available collection of exits' sides
+            ArrayList<Integer> okExt = new ArrayList<>();
+            for (int i = 0; i < r1.getHalls().length; i++) {
+                if (r1.getHalls()[i]) {
+                    okExt.add(i);
+                }
+            }
+            int s = okExt.get(random.nextInt(okExt.size()));
+            //leftwall = 0;
+            if (s == 0) {
+                r1.getHalls()[0] = false;
+                int e = random.nextInt(r1.leftsize());
+                Place exit = r1.leftWall().get(e);
+                Enter exhall = new Enter(exit, 0);
+                Enter exitHall = addHall(exhall);
+                if (exitHall != null) {
+                    return exitHall;
+                }
+            }
+            //rightwall = 1;
+            if (s == 1) {
+                r1.getHalls()[1] = false;
+                int e = random.nextInt(r1.leftsize());
+                Place exit = r1.rightWall().get(e);
+                Enter exhall = new Enter(exit, 1);
+                Enter exitHall = addHall(exhall);
+                if (exitHall != null) {
+                    return exitHall;
+                }
+            }
+
+            //topwall = 2
+            if (s == 2) {
+                r1.getHalls()[2] = false;
+                int e = random.nextInt(r1.bottomsize());
+                Place exit = r1.topWall().get(e);
+                Enter exhall = new Enter(exit, 2);
+                Enter exitHall = addHall(exhall);
+                if (exitHall != null) {
+                    return exitHall;
+                }
+            }
+            //bottomwall = 3
+            if (s == 3) {
+                r1.getHalls()[3] = false;
+                int e = random.nextInt(r1.bottomsize());
+                Place exit = r1.bottomWall().get(e);
+                Enter exhall = new Enter(exit, 3);
+                Enter exitHall = addHall(exhall);
+
+                if (exitHall != null) {
+                    return exitHall;
+                }
+            }
+        }
+        return null;
+    }
+
+
+    private void extendLeft(Place p) {
+        int x1 = p.x;
+        for (int i = 1; i <= MAX_OFFSET; i++) {
+            world[x1 - i][p.y] = Tileset.FLOOR;
+            world[x1 - i][p.y + 1] = wall;
+            world[x1 - i][p.y - 1] = wall;
+        }
+    }
+
+    private void extendRight(Place p) {
+        int x1 = p.x;
+        for (int i = 1; i <= MAX_OFFSET; i++) {
+            world[x1 + i][p.y] = Tileset.FLOOR;
+            world[x1 + i][p.y + 1] = wall;
+            world[x1 + i][p.y - 1] = wall;
+        }
+    }
+
+    private void extendUp(Place p) {
+        int y1 = p.y;
+        for (int i = 1; i <= MAX_OFFSET; i++) {
+            world[p.x][y1 + i] = Tileset.FLOOR;
+            world[p.x + 1][y1 + i] = wall;
+            world[p.x - 1][y1 + i] = wall;
+        }
+    }
+
+    private void extendDown(Place p) {
+        int y1 = p.y;
+        for (int i = 1; i <= MAX_OFFSET; i++) {
+            world[p.x][y1 - i] = Tileset.FLOOR;
+            world[p.x + 1][y1 - i] = wall;
+            world[p.x - 1][y1 - i] = wall;
+        }
+    }
+
     //generate a room within WIDTH and HEIGHT from exit point EP;
     public Room roomGenerator(Enter ep) {
         //left
@@ -306,6 +329,24 @@ public class MapGenerator implements Serializable {
         }
     }
 
+    // helper function to add a room on the map;
+    private void addRoom(Room r) {
+        int w = r.getWidth();
+        int h = r.getHeight();
+        int startX = r.getBottomLeft().x;
+        int starty = r.getBottomLeft().y;
+        for (int i = 0; i < w + 2; i++) {
+            for (int j = 0; j < h + 2; j++) {
+                if (i == 0 || j == 0 || i == w + 1 || j == h + 1) {
+                    world[i + startX][j + starty]
+                            = TETile.colorVariant(Tileset.WALL, 32, 32, 32, random);
+                } else {
+                    world[i + startX][j + starty] = Tileset.FLOOR;
+                }
+            }
+        }
+    }
+
     //returns an Exit point form a hall extended
     //or null if there's no hall;
     private Enter addHall(Enter exh) {
@@ -354,132 +395,13 @@ public class MapGenerator implements Serializable {
         return null;
     }
 
-    //extend hall from a room, return an exit point or null;
-    private Enter extendHall(Room r1) {
-        r1.avoidWalls();
-        while (r1.haveExit()) {
-            //available collection of exits' sides
-            ArrayList<Integer> okExt = new ArrayList<>();
-            for (int i = 0; i < r1.getHalls().length; i++) {
-                if (r1.getHalls()[i]) {
-                    okExt.add(i);
-                }
-            }
-            int s = okExt.get(random.nextInt(okExt.size()));
-            //leftwall = 0;
-            if (s == 0) {
-                r1.getHalls()[0] = false;
-                int e = random.nextInt(r1.leftsize());
-                Place exit = r1.leftWall().get(e);
-                Enter exhall = new Enter(exit, 0);
-                Enter exitHall = addHall(exhall);
-                if (exitHall != null) {
-                    return exitHall;
-                }
-            }
-            //rightwall = 1;
-            if (s == 1) {
-                r1.getHalls()[1] = false;
-                int e = random.nextInt(r1.leftsize());
-                Place exit = r1.rightWall().get(e);
-                Enter exhall = new Enter(exit, 1);
-                Enter exitHall = addHall(exhall);
-                if (exitHall != null) {
-                    return exitHall;
-                }
-            }
-
-            //topwall = 2
-            if (s == 2) {
-                r1.getHalls()[2] = false;
-                int e = random.nextInt(r1.bottomsize());
-                Place exit = r1.topWall().get(e);
-                Enter exhall = new Enter(exit, 2);
-                Enter exitHall = addHall(exhall);
-                if (exitHall != null) {
-                    return exitHall;
-                }
-            }
-            //bottomwall = 3
-            if (s == 3) {
-                r1.getHalls()[3] = false;
-                int e = random.nextInt(r1.bottomsize());
-                Place exit = r1.bottomWall().get(e);
-                Enter exhall = new Enter(exit, 3);
-                Enter exitHall = addHall(exhall);
-
-                if (exitHall != null) {
-                    return exitHall;
-                }
-            }
-        }
-        return null;
-    }
 
 
-    private void extendLeft(Place p) {
-        int x1 = p.x;
-        for (int i = 1; i <= MAX_OFFSET; i++) {
-            world[x1 - i][p.y] = Tileset.FLOOR;
-            world[x1 - i][p.y + 1] = wall;
-            world[x1 - i][p.y - 1] = wall;
-        }
-    }
-
-    private void extendRight(Place p) {
-        int x1 = p.x;
-        for (int i = 1; i <= MAX_OFFSET; i++) {
-            world[x1 + i][p.y] = Tileset.FLOOR;
-            world[x1 + i][p.y + 1] = wall;
-            world[x1 + i][p.y - 1] = wall;
-        }
-    }
-
-    private void extendUp(Place p) {
-        int y1 = p.y;
-        for (int i = 1; i <= MAX_OFFSET; i++) {
-            world[p.x][y1 + i] = Tileset.FLOOR;
-            world[p.x + 1][y1 + i] = wall;
-            world[p.x - 1][y1 + i] = wall;
-        }
-    }
-
-    private void extendDown(Place p) {
-        int y1 = p.y;
-        for (int i = 1; i <= MAX_OFFSET; i++) {
-            world[p.x][y1 - i] = Tileset.FLOOR;
-            world[p.x + 1][y1 - i] = wall;
-            world[p.x - 1][y1 - i] = wall;
-        }
-    }
-
-    private void initialize() {
-        world = new TETile[WIDTH][HEIGHT];
-        ter.initialize(WIDTH, HEIGHT);
-        for (int i = 0; i < WIDTH; i++) {
-            for (int j = 0; j < HEIGHT; j++) {
-                world[i][j] = Tileset.NOTHING;
-            }
-        }
-    }
 
 
-    private Room generateRoom() {
-        int h = random.nextInt(MAXH) + 2;
-        int w = random.nextInt(MAXW) + 2;
-        //Random starting place startx, starty with room for walls;
-        int startX = random.nextInt(WIDTH - 6) + 3;
-        int startY = random.nextInt(HEIGHT - 6) + 3;
-        while (startX + w + 1 >= WIDTH - 3) {
-            startX = random.nextInt(WIDTH - 6) + 3;
-        }
-        while (startY + h + 1 >= HEIGHT - 3) {
-            startY = random.nextInt(HEIGHT - 6) + 3;
-        }
-        return new Room(w, h, new Place(startX, startY));
 
-    }
 
+    // Game play component
     private void addPotions() {
         int x = random.nextInt(WIDTH);
         int y = random.nextInt(HEIGHT);
@@ -493,7 +415,7 @@ public class MapGenerator implements Serializable {
         }
         world[x][y] = Tileset.POTION;
     }
-
+    // Game play component
     private void addRat() {
         int x = random.nextInt(WIDTH);
         int y = random.nextInt(HEIGHT);
@@ -528,23 +450,241 @@ public class MapGenerator implements Serializable {
         world[x][y] = Tileset.RAT;
     }
 
-    // add room on map;
-    private void addRoom(Room r) {
-        int w = r.getWidth();
-        int h = r.getHeight();
-        int startX = r.getBottomLeft().x;
-        int starty = r.getBottomLeft().y;
-        for (int i = 0; i < w + 2; i++) {
-            for (int j = 0; j < h + 2; j++) {
-                if (i == 0 || j == 0 || i == w + 1 || j == h + 1) {
-                    world[i + startX][j + starty]
-                            = TETile.colorVariant(Tileset.WALL, 32, 32, 32, random);
-                } else {
-                    world[i + startX][j + starty] = Tileset.FLOOR;
-                }
-            }
-        }
-    }
 
 
 }
+
+
+    // For game play: add player and other game play components
+    public static Place liftCurse() {
+        return curse;
+    }
+
+    public Place addPlayer() {
+        int x = random.nextInt(WIDTH);
+        int y = random.nextInt(HEIGHT);
+        while (!world[x][y].equals(EXIT_TILE)) {
+            x = random.nextInt(WIDTH);
+            y = random.nextInt(HEIGHT);
+        }
+        world[x][y] = Tileset.PLAYER;
+        return new Place(x, y);
+    }
+    // For game play: add stairs to enter the second level of the map
+    private Place addStairs() {
+        int x = random.nextInt(WIDTH);
+        int y = random.nextInt(HEIGHT);
+        for (int i = 0; i < WIDTH; i++) {
+            for (int j = 0; j < HEIGHT; j++) {
+                if(world[x][y] != Tileset.FLOOR
+                        || world[x][y] == Tileset.POTION
+                        || world[x][y] == Tileset.RAT
+                        || world[x][y] == Tileset.PLAYER) {
+                    x = random.nextInt(WIDTH);
+                    y = random.nextInt(HEIGHT);
+                }
+            }
+        }
+        world[x][y] = Tileset.STAIR;
+        return new Place(x,y);
+    }
+
+    // game play component
+    private void addLockedDoor(Room room) {
+        ArrayList<Place> doorSpots = new ArrayList<>();
+        for (int i = 0; i < room.leftWall().size(); i++) {
+            Place p = room.leftWall().get(i);
+            if (p.x - 1 >= 0) {
+                if (world[p.x][p.y].description().equals("wall")
+                        && (!world[p.x][p.y + 1].description().equals("floor")
+                        || !world[p.x][p.y - 1].description().equals("floor"))
+                        && world[p.x - 1][p.y].description().equals("nothing")) {
+                    doorSpots.add(p);
+                }
+            }
+        }
+        for (int i = 0; i < room.rightWall().size(); i++) {
+            Place p = room.rightWall().get(i);
+            if (p.x + 1 < WIDTH) {
+                if (world[p.x][p.y].description().equals("wall")
+                        && (!world[p.x][p.y + 1].description().equals("floor")
+                        || !world[p.x][p.y - 1].description().equals("floor"))
+                        && world[p.x + 1][p.y].description().equals("nothing")) {
+                    doorSpots.add(p);
+                }
+            }
+        }
+        for (int i = 0; i < room.topWall().size(); i++) {
+            Place p = room.topWall().get(i);
+            if (p.y + 1 < HEIGHT) {
+                if (world[p.x][p.y].description().equals("wall")
+                        && (!world[p.x + 1][p.y].description().equals("floor")
+                        || !world[p.x - 1][p.y].description().equals("floor"))
+                        && world[p.x][p.y + 1].description().equals("nothing")) {
+                    doorSpots.add(p);
+                }
+            }
+        }
+
+        for (int i = 0; i < room.bottomWall().size(); i++) {
+            Place p = room.bottomWall().get(i);
+            if (p.y - 1 >= 0) {
+                if (world[p.x][p.y].description().equals("wall")
+                        && (!world[p.x + 1][p.y].description().equals("floor")
+                        || !world[p.x - 1][p.y].description().equals("floor"))
+                        && world[p.x][p.y - 1].description().equals("nothing")) {
+                    doorSpots.add(p);
+                }
+            }
+        }
+        if (!doorSpots.isEmpty()) {
+            int door = random.nextInt(doorSpots.size());
+            Place exit = doorSpots.get(door);
+            world[exit.x][exit.y] = ENTRY_TILE;
+            if (world[exit.x + 1][exit.y].equals(Tileset.FLOOR)) {
+                world[exit.x + 1][exit.y] = Tileset.CURSE;
+                curse = new Place(exit.x + 1, exit.y);
+            } else if (world[exit.x - 1][exit.y].equals(Tileset.FLOOR)) {
+                world[exit.x - 1][exit.y] = Tileset.CURSE;
+                curse = new Place(exit.x - 1, exit.y);
+            } else if (world[exit.x][exit.y + 1].equals(Tileset.FLOOR)) {
+                world[exit.x][exit.y + 1] = Tileset.CURSE;
+                curse = new Place(exit.x, exit.y + 1);
+            } else if (world[exit.x][exit.y - 1].equals(Tileset.FLOOR)) {
+                world[exit.x][exit.y - 1] = Tileset.CURSE;
+                curse = new Place(exit.x, exit.y - 1);
+            }
+
+        } else {
+            int x = random.nextInt(WIDTH);
+            int y = random.nextInt(HEIGHT);
+            for (int i = 0; i < WIDTH - 1; i++) {
+                for (int j = 0; j < HEIGHT - 1; j++) {
+                    if(world[x][y] != Tileset.WALL) {
+                        x = random.nextInt(WIDTH);
+                        y = random.nextInt(HEIGHT);
+                    }
+                }
+            }
+            world[x][y] = Tileset.LOCKED_DOOR;
+        }
+
+
+
+
+        // For game play: add player and other game play components
+        public static Place liftCurse() {
+            return curse;
+        }
+
+        public Place addPlayer() {
+            int x = random.nextInt(WIDTH);
+            int y = random.nextInt(HEIGHT);
+            while (!world[x][y].equals(EXIT_TILE)) {
+                x = random.nextInt(WIDTH);
+                y = random.nextInt(HEIGHT);
+            }
+            world[x][y] = Tileset.PLAYER;
+            return new Place(x, y);
+        }
+        // For game play: add stairs to enter the second level of the map
+        private Place addStairs() {
+            int x = random.nextInt(WIDTH);
+            int y = random.nextInt(HEIGHT);
+            for (int i = 0; i < WIDTH; i++) {
+                for (int j = 0; j < HEIGHT; j++) {
+                    if(world[x][y] != Tileset.FLOOR
+                            || world[x][y] == Tileset.POTION
+                            || world[x][y] == Tileset.RAT
+                            || world[x][y] == Tileset.PLAYER) {
+                        x = random.nextInt(WIDTH);
+                        y = random.nextInt(HEIGHT);
+                    }
+                }
+            }
+            world[x][y] = Tileset.STAIR;
+            return new Place(x,y);
+        }
+
+        // game play component
+        private void addLockedDoor(Room room) {
+            ArrayList<Place> doorSpots = new ArrayList<>();
+            for (int i = 0; i < room.leftWall().size(); i++) {
+                Place p = room.leftWall().get(i);
+                if (p.x - 1 >= 0) {
+                    if (world[p.x][p.y].description().equals("wall")
+                            && (!world[p.x][p.y + 1].description().equals("floor")
+                            || !world[p.x][p.y - 1].description().equals("floor"))
+                            && world[p.x - 1][p.y].description().equals("nothing")) {
+                        doorSpots.add(p);
+                    }
+                }
+            }
+            for (int i = 0; i < room.rightWall().size(); i++) {
+                Place p = room.rightWall().get(i);
+                if (p.x + 1 < WIDTH) {
+                    if (world[p.x][p.y].description().equals("wall")
+                            && (!world[p.x][p.y + 1].description().equals("floor")
+                            || !world[p.x][p.y - 1].description().equals("floor"))
+                            && world[p.x + 1][p.y].description().equals("nothing")) {
+                        doorSpots.add(p);
+                    }
+                }
+            }
+            for (int i = 0; i < room.topWall().size(); i++) {
+                Place p = room.topWall().get(i);
+                if (p.y + 1 < HEIGHT) {
+                    if (world[p.x][p.y].description().equals("wall")
+                            && (!world[p.x + 1][p.y].description().equals("floor")
+                            || !world[p.x - 1][p.y].description().equals("floor"))
+                            && world[p.x][p.y + 1].description().equals("nothing")) {
+                        doorSpots.add(p);
+                    }
+                }
+            }
+
+            for (int i = 0; i < room.bottomWall().size(); i++) {
+                Place p = room.bottomWall().get(i);
+                if (p.y - 1 >= 0) {
+                    if (world[p.x][p.y].description().equals("wall")
+                            && (!world[p.x + 1][p.y].description().equals("floor")
+                            || !world[p.x - 1][p.y].description().equals("floor"))
+                            && world[p.x][p.y - 1].description().equals("nothing")) {
+                        doorSpots.add(p);
+                    }
+                }
+            }
+            if (!doorSpots.isEmpty()) {
+                int door = random.nextInt(doorSpots.size());
+                Place exit = doorSpots.get(door);
+                world[exit.x][exit.y] = ENTRY_TILE;
+                if (world[exit.x + 1][exit.y].equals(Tileset.FLOOR)) {
+                    world[exit.x + 1][exit.y] = Tileset.CURSE;
+                    curse = new Place(exit.x + 1, exit.y);
+                } else if (world[exit.x - 1][exit.y].equals(Tileset.FLOOR)) {
+                    world[exit.x - 1][exit.y] = Tileset.CURSE;
+                    curse = new Place(exit.x - 1, exit.y);
+                } else if (world[exit.x][exit.y + 1].equals(Tileset.FLOOR)) {
+                    world[exit.x][exit.y + 1] = Tileset.CURSE;
+                    curse = new Place(exit.x, exit.y + 1);
+                } else if (world[exit.x][exit.y - 1].equals(Tileset.FLOOR)) {
+                    world[exit.x][exit.y - 1] = Tileset.CURSE;
+                    curse = new Place(exit.x, exit.y - 1);
+                }
+
+            } else {
+                int x = random.nextInt(WIDTH);
+                int y = random.nextInt(HEIGHT);
+                for (int i = 0; i < WIDTH - 1; i++) {
+                    for (int j = 0; j < HEIGHT - 1; j++) {
+                        if(world[x][y] != Tileset.WALL) {
+                            x = random.nextInt(WIDTH);
+                            y = random.nextInt(HEIGHT);
+                        }
+                    }
+                }
+                world[x][y] = Tileset.LOCKED_DOOR;
+            }
+
+        }
+    }
